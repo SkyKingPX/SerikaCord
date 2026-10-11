@@ -1,10 +1,28 @@
 # SerikaCord — Full Changelog
 
-**298 commits** · Jan 22 – Jul 21, 2026 · v0.0.1 → v1.2.7.
+**298 commits** · Jan 22 – Jul 21, 2026 · v0.0.1 → v2.0.0.
 
 ---
 
 ## Unreleased
+
+### Features
+
+### Changes
+
+### Bug Fixes
+
+### Performance
+
+### Security
+
+### Removed
+
+---
+
+## v2.0.0 — 2026-10-11
+
+**Tag:** `v2.0.0` · **Commit:** `adf6dfe`
 
 ### Features
 - **Threads in text channels** — hover a message (or right-click / long-press it) and pick Create Thread, or use the new Threads button in the channel header, to start a side conversation like on Discord. The thread opens in a panel next to the channel that you can resize, close or expand to full size; the message it started from shows the thread's name, "N Messages ›" and the latest reply, and threads started from the header leave a "started a thread" line in the channel. The Threads button lists joined, other active and archived threads with search. Threads you join (by creating one, posting in it, being @mentioned or pressing Join Thread) appear under their channel in the sidebar with unread and mention badges, and only notify their members. Threads hide themselves after 1 hour, 24 hours, 3 days or 1 week without messages (posting reopens them); thread owners and moderators can close, reopen and change that time, and moderators can lock a thread. Private threads, and the Create Public/Private Threads, Send Messages in Threads and Manage Threads permissions, work like on Discord.
