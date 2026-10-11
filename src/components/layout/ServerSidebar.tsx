@@ -1,5 +1,6 @@
 "use client";
 
+import { isInstalledApp } from "@/lib/desktop/bridge";
 import { sharedGet } from "@/lib/bootFetch";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -866,8 +867,8 @@ export function ServerSidebar({ onCreateServer, onInvitePeople }: ServerSidebarP
           </TooltipContent>
         </Tooltip>
 
-        {/* Download — only on web browser, hidden on Tauri & Capacitor */}
-        {isClient && !window.__TAURI__ && !window.Capacitor?.isNativePlatform?.() && (
+        {/* Download — only in a browser, hidden in every installed app */}
+        {isClient && !isInstalledApp() && (
           <Tooltip>
             <TooltipTrigger asChild>
               <button

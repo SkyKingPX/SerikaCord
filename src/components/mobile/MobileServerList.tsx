@@ -1,5 +1,6 @@
 "use client";
 
+import { isInstalledApp } from "@/lib/desktop/bridge";
 import { useRouter } from "next/navigation";
 import { useServer } from "@/contexts/ServerContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -144,8 +145,8 @@ export function MobileServerList({ onServerSelect, onCreateServer }: MobileServe
             <Plus className="w-6 h-6" />
           </button>
 
-          {/* Download — only on web browser, hidden on Tauri & Capacitor */}
-          {typeof window !== "undefined" && !window.__TAURI__ && !window.Capacitor?.isNativePlatform?.() && (
+          {/* Download — only in a browser, hidden in every installed app */}
+          {typeof window !== "undefined" && !isInstalledApp() && (
             <button
               onClick={() => router.push("/download")}
               className="w-[52px] h-[52px] rounded-[24px] bg-[var(--bg-sidebar-elevated)] flex items-center justify-center text-[#23A559] hover:bg-[#23A559] hover:text-white hover:rounded-[18px] transition-all duration-200 active:scale-95"

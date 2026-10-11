@@ -71,6 +71,22 @@ export function isDesktopShell(): boolean {
   return typeof window !== "undefined" && window.__serikaDesktop?.shell === "qt";
 }
 
+/**
+ * Running inside any installed SerikaCord app rather than a browser tab: the Qt
+ * desktop app, the (older) Tauri app, which only has `__TAURI_INTERNALS__` since
+ * `withGlobalTauri` is off, or the Android app. Used to hide "Download the app".
+ */
+export function isInstalledApp(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isDesktopShell() || window.__TAURI__ || "__TAURI_INTERNALS__" in window) return true;
+  try {
+    if (window.Capacitor?.isNativePlatform?.() === true) return true;
+  } catch {
+    // ignore
+  }
+  return /SerikaCordDesktop\//.test(navigator.userAgent);
+}
+
 export function getDesktopMarker(): DesktopMarker | null {
   return isDesktopShell() ? window.__serikaDesktop! : null;
 }
