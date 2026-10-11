@@ -121,6 +121,8 @@ export const Message = {
     roleIds: string[];
     since: Date;
     limit: number;
+    /** Only mentions after the user's read marker in that channel (badge seeding). */
+    unreadOnly?: boolean;
   }) {
     if (opts.channelIds.length === 0) return [];
     const uid = normalizeId(opts.userId);
@@ -141,6 +143,11 @@ export const Message = {
         gt(schema.messages.createdAt, opts.since),
         ne(schema.messages.authorId, uid),
         or(...mentionConds),
+        // Read markers hold milliseconds and created_at microseconds, so a
+        // message is read when it's before marker + 1ms (as in unreadCounts).
+        opts.unreadOnly
+          ? sql`NOT EXISTS (SELECT 1 FROM channel_read_states rs WHERE rs.user_id = ${uid}::uuid AND rs.channel_id = ${schema.messages.channelId} AND ${schema.messages.createdAt} < rs.last_read_at + interval '1 millisecond')`
+          : undefined,
       ))
       .orderBy(desc(schema.messages.createdAt))
       .limit(opts.limit);

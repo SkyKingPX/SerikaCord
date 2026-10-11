@@ -1087,12 +1087,17 @@ const userRoutes = new Elysia({ prefix: '/users' })
         filterChannelIds = channels.filter(c => c.serverId === serverFilter).map(c => c.id);
       }
 
+      // `?unread=1` (badge seeding on a new client): every mention you haven't
+      // read yet, however old, instead of the newest 50 of the last week,
+      // which undercounted next to a client that had been open all along.
+      const unreadOnly = (query as { unread?: string })?.unread === '1';
       const filteredMessages = await Message.findMentionsOf({
         channelIds: filterChannelIds,
         userId: user.id,
         roleIds: [...allUserRoleIds],
-        since: sevenDaysAgo,
-        limit: 50,
+        since: unreadOnly ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) : sevenDaysAgo,
+        limit: unreadOnly ? 500 : 50,
+        unreadOnly,
       });
 
       // Batch fetch authors
@@ -1307,6 +1312,15 @@ const userRoutes = new Elysia({ prefix: '/users' })
         return { error: 'Invalid id' };
       }
 
+      // Only for channels and DMs you can see: otherwise this would reveal any
+      // channel's latest message id/time and write rows for it.
+      const { checkChannelAccess } = await import('./channels');
+      const access = await checkChannelAccess(user.id, channelId, { lean: true }).catch(() => ({ hasAccess: false }));
+      if (!access.hasAccess) {
+        set.status = 403;
+        return { error: 'Access denied' };
+      }
+
       // "Mark Unread" from `messageId`: the marker moves back to the message
       // above it (or to just before it when it's the first one), on purpose
       // older than what's stored, and the user's other devices follow.
@@ -1314,12 +1328,6 @@ const userRoutes = new Elysia({ prefix: '/users' })
         if (!messageId) {
           set.status = 400;
           return { error: 'messageId is required' };
-        }
-        const { checkChannelAccess } = await import('./channels');
-        const access = await checkChannelAccess(user.id, channelId).catch(() => ({ hasAccess: false }));
-        if (!access.hasAccess) {
-          set.status = 403;
-          return { error: 'Access denied' };
         }
         const target = await Message.findOne({ id: messageId, channelId, isDeleted: false });
         if (!target?.createdAt) {
@@ -1868,6 +1876,12 @@ const userRoutes = new Elysia({ prefix: '/users' })
     // Automatic idle: the client says whether this device saw input in the
     // last 10 minutes. Only online <-> (automatic) idle ever changes here.
     const idle = parseHeartbeatIdle(body);
+    const heartbeatApp = (body as { app?: unknown } | null)?.app;
+    if (idle !== undefined && heartbeatApp !== 'android' && heartbeatApp !== 'ios') {
+      void import('@/lib/services/pushNotifications')
+        .then((m) => m.setDesktopAttending(user.id, !idle))
+        .catch(() => { /* best-effort */ });
+    }
     let autoStatus: 'online' | 'idle' | null = null;
     if (idle !== undefined) {
       autoStatus = await resolveAutoIdle(user.id, user.status, idle);

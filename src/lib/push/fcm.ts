@@ -63,7 +63,9 @@ export type PushPayload =
       route: string;
       answerRoute: string;
     }
-  | { kind: "call_cancel"; roomId: string };
+  | { kind: "call_cancel"; roomId: string }
+  /** The conversation was read on another device: remove its notification. */
+  | { kind: "message_read"; tag: string };
 
 const MAX_TITLE = 100;
 const MAX_BODY = 240;
@@ -114,6 +116,14 @@ export function buildFcmMessage(token: string, payload: PushPayload): Record<str
         answerRoute: payload.answerRoute,
       },
       android: { priority: "HIGH", ttl: "45s" },
+    };
+  }
+  if (payload.kind === "message_read") {
+    // Data-only: the app's messaging service cancels the notification by tag.
+    return {
+      token,
+      data: { type: "message_read", tag: payload.tag },
+      android: { priority: "NORMAL", ttl: "86400s", collapse_key: `read-${payload.tag}` },
     };
   }
   return {

@@ -1,5 +1,7 @@
 "use client";
 
+import { isMessageRead } from "@/lib/unread/engine";
+import { getUnreadState } from "@/lib/unread/store";
 import dynamic from "next/dynamic";
 import { MountWhenOpened } from "@/components/ui/MountWhenOpened";
 
@@ -719,6 +721,8 @@ export function ChatArea({ onToggleMembers, showMembers, channelOverride, varian
         },
         quiet: !isMentioned && !isEveryoneMention,
         messageId: message.id,
+        // Read on another device during the claim delay: don't pop it here.
+        stillUnread: () => !isMessageRead(getUnreadState(), message.channelId, message.id, message.createdAt),
       });
 
       // Auto TTS: speak incoming messages when the listener has TTS enabled, or

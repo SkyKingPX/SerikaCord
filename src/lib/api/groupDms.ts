@@ -421,6 +421,9 @@ export const groupDmRoutes = new Elysia({ prefix: '/group-dms' })
     // Everyone's DM list moves the group up; the others get the badge and
     // notification (named after the group, opening the group page).
     void (async () => {
+      // Sending reads the group up to your message, on all your devices.
+      const { ackOwnMessage } = await import('@/lib/api/activity');
+      ackOwnMessage(user.id, channel.id, message.id, message.createdAt);
       const { signalDmMessage } = await import('@/lib/services/messageSignals');
       await signalDmMessage({
         channelId: channel.id,

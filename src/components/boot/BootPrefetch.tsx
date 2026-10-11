@@ -10,7 +10,7 @@ const BOOT_URLS = [
   "/api/users/@me/servers",
   "/api/dms",
   "/api/users/me/settings",
-  "/api/users/@me/mentions",
+  "/api/users/@me/mentions?unread=1",
   "/api/users/@me/read-states",
   "/api/users/@me/channel-activity",
 ];

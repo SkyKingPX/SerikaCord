@@ -205,13 +205,63 @@ export async function setPushAway(userId: string, away: boolean): Promise<void> 
   else await redis.del(awayKey(userId));
 }
 
+// An active (not idle) desktop or browser session: message pushes to the phone
+// wait, like Discord. Refreshed by every presence heartbeat (30s).
+const attendingKey = (userId: string) => `push:attending:${normalizeId(userId)}`;
+const ATTENDING_TTL_SECONDS = 75;
+
+/** A desktop / browser heartbeat: the user is (or stopped) actively using it. */
+export async function setDesktopAttending(userId: string, attending: boolean): Promise<void> {
+  const redis = getRedis();
+  if (!redis) return;
+  if (attending) await redis.set(attendingKey(userId), '1', 'EX', ATTENDING_TTL_SECONDS);
+  else await redis.del(attendingKey(userId));
+}
+
+// A message notification is (probably) showing on the user's phone for this
+// conversation, so reading it elsewhere should remove it.
+const shownKey = (userId: string, channelId: string) => `push:shown:${normalizeId(userId)}:${normalizeId(channelId)}`;
+const SHOWN_TTL_SECONDS = 2 * 24 * 60 * 60;
+
+async function markShown(userIds: string[], channelId: string): Promise<void> {
+  const redis = getRedis();
+  if (!redis || userIds.length === 0) return;
+  const multi = redis.multi();
+  for (const id of userIds) multi.set(shownKey(id, channelId), '1', 'EX', SHOWN_TTL_SECONDS);
+  await multi.exec().catch(() => null);
+}
+
+/** The user read `channelId` somewhere: clear its notification from their phones. */
+export function dismissReadPush(userId: string, channelId: string): void {
+  if (!isPushConfigured()) return;
+  run(async () => {
+    const redis = getRedis();
+    if (!redis) return;
+    const removed = await redis.del(shownKey(userId, channelId)).catch(() => 0);
+    if (!removed) return;
+    const devices = await devicesFor([userId]);
+    await sendToTokens(devices.get(userId) ?? [], { kind: 'message_read', tag: `message-${channelId}` });
+  });
+}
+
 /** Of these users (who have devices), the ones not actively using the app. */
-async function filterInactive(userIds: string[]): Promise<string[]> {
+async function filterInactive(userIds: string[], opts: { messages?: boolean } = {}): Promise<string[]> {
   if (userIds.length === 0) return [];
   const redis = getRedis();
   let away: Array<string | null> = userIds.map(() => null);
   if (redis) {
     away = await redis.mget(...userIds.map(awayKey)).catch(() => userIds.map(() => null));
+    if (opts.messages) {
+      // Busy on a computer: no message pushes to the phone (calls still ring).
+      const attending = await redis.mget(...userIds.map(attendingKey)).catch(() => userIds.map(() => null));
+      const keep = userIds.filter((_, i) => !attending[i]);
+      if (keep.length !== userIds.length) {
+        const keepSet = new Set(keep);
+        away = away.filter((_, i) => keepSet.has(userIds[i]));
+        userIds = keep;
+        if (userIds.length === 0) return [];
+      }
+    }
   }
   const { hasActivityConnection } = await import('@/lib/api/activity');
   const needHeartbeat = userIds.filter((id, i) => !away[i] && !hasActivityConnection(id));
@@ -307,7 +357,7 @@ export function pushDmActivity(recipientIds: string[], event: {
   run(async () => {
     const devices = await devicesFor(others);
     if (devices.size === 0) return;
-    const targets = await filterInactive([...devices.keys()]);
+    const targets = await filterInactive([...devices.keys()], { messages: true });
     if (targets.length === 0) return;
     const { getNotificationSettings } = await import('@/lib/services/notificationSettings');
     const route = event.messageId
@@ -317,6 +367,7 @@ export function pushDmActivity(recipientIds: string[], event: {
       pushPreview(event.preview) ||
       (event.hasAttachments ? FALLBACK_ATTACHMENT : event.hasSticker ? FALLBACK_STICKER : FALLBACK_NEW_MESSAGE);
     const tokens: string[] = [];
+    const pushed: string[] = [];
     for (const userId of targets) {
       const doc = await getNotificationSettings(userId).catch(() => null);
       if (doc) {
@@ -325,6 +376,7 @@ export function pushDmActivity(recipientIds: string[], event: {
         if (!alert.notify) continue;
       }
       tokens.push(...(devices.get(userId) ?? []));
+      pushed.push(userId);
     }
     await sendToTokens(tokens, {
       kind: 'message',
@@ -333,6 +385,7 @@ export function pushDmActivity(recipientIds: string[], event: {
       route,
       tag: `message-${event.channelId}`,
     });
+    await markShown(pushed, event.channelId);
   });
 }
 
@@ -361,7 +414,7 @@ export function pushChannelActivity(event: {
   run(async () => {
     const devices = await devicesFor(candidates);
     if (devices.size === 0) return;
-    const targets = await filterInactive([...devices.keys()]);
+    const targets = await filterInactive([...devices.keys()], { messages: true });
     if (targets.length === 0) return;
     const [{ getNotificationSettings, getServerDefaultLevels }, { checkChannelAccess }] = await Promise.all([
       import('@/lib/services/notificationSettings'),
@@ -375,6 +428,7 @@ export function pushChannelActivity(event: {
       .limit(1)
       .catch(() => []);
     const tokens: string[] = [];
+    const pushed: string[] = [];
     for (const userId of targets) {
       const access = await checkChannelAccess(userId, event.channelId, { lean: true }).catch(() => ({ hasAccess: false }));
       if (!access.hasAccess) continue;
@@ -397,6 +451,7 @@ export function pushChannelActivity(event: {
         if (!alert.notify) continue;
       }
       tokens.push(...(devices.get(userId) ?? []));
+      pushed.push(userId);
     }
     const where = [event.channelName ? `#${event.channelName}` : '', server?.name ?? ''].filter(Boolean).join(', ');
     await sendToTokens(tokens, {
@@ -406,6 +461,7 @@ export function pushChannelActivity(event: {
       route: `/channels/${event.serverId}/${event.channelId}?jump=${encodeURIComponent(event.messageId)}`,
       tag: `message-${event.channelId}`,
     });
+    await markShown(pushed, event.channelId);
   });
 }
 

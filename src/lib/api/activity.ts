@@ -284,7 +284,12 @@ export function notifyReadState(
   void fanoutToUsers(
     { userIds: [userId] },
     { type: 'read_state', channelId, lastReadAt, lastReadMessageId: lastReadMessageId ?? null, ...(rewind ? { rewind: true } : {}) },
-  );
+  );  // Read on any device: take its notification off the user's phones too.
+  if (!rewind) {
+    void import('@/lib/services/pushNotifications')
+      .then((m) => m.dismissReadPush(userId, channelId))
+      .catch(() => { /* best-effort */ });
+  }
 }
 
 /**

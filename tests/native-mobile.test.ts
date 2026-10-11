@@ -199,3 +199,16 @@ describe("FCM helpers", () => {
     expect(isPlausibleDeviceToken(undefined)).toBe(false);
   });
 });
+
+describe("message_read push", () => {
+  test("is data-only and carries the conversation tag", () => {
+    const msg = buildFcmMessage("tok", { kind: "message_read", tag: "message-c1" }) as {
+      token: string;
+      notification?: unknown;
+      data: Record<string, string>;
+    };
+    expect(msg.token).toBe("tok");
+    expect(msg.notification).toBeUndefined();
+    expect(msg.data).toEqual({ type: "message_read", tag: "message-c1" });
+  });
+});

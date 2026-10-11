@@ -8,6 +8,7 @@ import { unregisterPush } from "@/lib/native/push";
 import { shouldPromoteToOnline, toClientStatus, toServerStatus } from "@/lib/presenceChoice";
 import type { BuiltinBadgeId } from "@/lib/constants/badges";
 import { isDesktopShell } from "@/lib/desktop/bridge";
+import { nativePlatform } from "@/lib/native/bridge";
 import { isDeviceIdle, onIdleChange, startIdleTracker } from "@/lib/presence/idleTracker";
 
 // Built-in ids keep autocomplete; badges created in the DB are plain strings.
@@ -85,7 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch("/api/users/me/presence/heartbeat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idle }),
+        // Which app is beating: an active desktop / browser session holds back
+        // message pushes to the phone (like Discord).
+        body: JSON.stringify({ idle, app: nativePlatform() !== "web" ? nativePlatform() : isDesktopShell() ? "desktop" : "web" }),
         keepalive: true,
       });
       const data = res.ok ? await res.json().catch(() => null) : null;

@@ -259,6 +259,11 @@ function ancestorsOf(meta: Record<string, ChannelMeta>, channelId: string, paren
 }
 
 /** Re-seed at most this often when the tab comes back (reconnects always do). */
+/** Seed GET: the shared boot prefetch normally, a fresh request after a gap. */
+function getSeed(url: string, fresh: boolean): Promise<Response> {
+  return fresh ? fetch(url, { credentials: "include", cache: "no-store" }) : sharedGet(url);
+}
+
 const RESYNC_MIN_INTERVAL_MS = 30_000;
 /** Server-channel types whose activity the channel-activity seed covers. */
 const SEEDED_CHANNEL_TYPES = new Set(["text", "announcement"]);
@@ -565,9 +570,9 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
 
   // Every text channel the user can see in every server (not just the open
   // one) with its newest message, so the server-rail pill is right on load.
-  const seedChannelActivity = useCallback(async () => {
+  const seedChannelActivity = useCallback(async (fresh = false) => {
     try {
-      const res = await sharedGet("/api/users/@me/channel-activity");
+      const res = await getSeed("/api/users/@me/channel-activity", fresh);
       if (!res.ok) return;
       const data = (await res.json()) as {
         channels?: Array<{
@@ -613,9 +618,9 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
     }
   }, [registerChannels]);
 
-  const seedMentionsFromApi = useCallback(async () => {
+  const seedMentionsFromApi = useCallback(async (fresh = false) => {
     try {
-      const res = await sharedGet("/api/users/@me/mentions");
+      const res = await getSeed("/api/users/@me/mentions?unread=1", fresh);
       if (!res.ok) return;
       const data = (await res.json()) as { mentions?: Array<{ id: string; channelId: string; serverId?: string; createdAt: string; kind?: "user" | "role" | "everyone" }> };
       seedMentions(data.mentions ?? []);
@@ -624,10 +629,10 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
     }
   }, [seedMentions]);
 
-  const seedDms = useCallback(async () => {
+  const seedDms = useCallback(async (fresh = false) => {
     const issuedAt = Date.now();
     try {
-      const res = await sharedGet("/api/dms");
+      const res = await getSeed("/api/dms", fresh);
       if (!res.ok) return;
       const data = (await res.json()) as { channels?: Array<DmSeed & { recipients?: Array<{ id: string; displayName?: string; username?: string; avatar?: string | null }> }> };
       const channels = data.channels ?? [];
@@ -652,9 +657,9 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
   // Cross-device read state: pull the DB read markers (newest wins per
   // channel). Runs on login, on every activity-stream (re)connect and when the
   // tab comes back — a `read_state` event only reaches a connected client.
-  const syncReadStates = useCallback(async () => {
+  const syncReadStates = useCallback(async (fresh = false) => {
     try {
-      const res = await sharedGet("/api/users/@me/read-states");
+      const res = await getSeed("/api/users/@me/read-states", fresh);
       if (!res.ok) return;
       const data = (await res.json()) as {
         readStates?: Array<{ channelId: string; lastReadAt: string | null; lastReadMessageId?: string | null }>;
@@ -671,11 +676,11 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
   }, [afterRead]);
 
   const lastResyncRef = useRef(0);
-  const resync = useCallback(async () => {
+  const resync = useCallback(async (fresh = false) => {
     lastResyncRef.current = Date.now();
     // Read markers first: the counts that follow are reconciled against them.
-    await syncReadStates();
-    await Promise.all([seedChannelActivity(), seedMentionsFromApi(), seedDms()]);
+    await syncReadStates(fresh);
+    await Promise.all([seedChannelActivity(fresh), seedMentionsFromApi(fresh), seedDms(fresh)]);
     flushPendingAcks();
   }, [syncReadStates, seedChannelActivity, seedMentionsFromApi, seedDms, flushPendingAcks]);
 
@@ -746,6 +751,12 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
         if (rewind) {
           // "Mark Unread" on another device (or the echo of this one's).
           dispatchUnread({ type: "rewind", channelId, at: lastReadAt, messageId: lastReadMessageId ?? null });
+          // Forget what we last acked here, or re-reading on this device would
+          // skip the POST and the conversation stays unread everywhere; and
+          // re-fetch the DM / mention badges the rewind brings back.
+          delete postedAckRef.current[channelId];
+          void seedDms(true);
+          void seedMentionsFromApi(true);
           return;
         }
         dispatchUnread({ type: "read", channelId, at: lastReadAt, messageId: lastReadMessageId ?? null });
@@ -988,8 +999,15 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
       es = source;
       source.onopen = () => {
         attempts = 0;
-        if (firstOpen) { firstOpen = false; return; } // mount effect already seeded
-        void resync();
+        if (firstOpen) {
+          // The mount seed may have used the boot prefetch, taken before this
+          // stream existed: anything read or sent on another device in between
+          // never reached us. Re-sync once, bypassing that cached data.
+          firstOpen = false;
+          void resync(true);
+          return;
+        }
+        void resync(true);
         void loadNotificationPrefs();
       };
       source.onmessage = handleMessage;
@@ -1027,7 +1045,7 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", revive);
       es?.close();
     };
-  }, [user, resync, afterRead, registerChannels, flushPendingAcks]);
+  }, [user, resync, afterRead, registerChannels, flushPendingAcks, seedDms, seedMentionsFromApi]);
 
   // Effective mute per registered conversation (recomputed when settings change
   // or a timed mute runs out — `prefs.version`).
