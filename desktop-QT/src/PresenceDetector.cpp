@@ -310,7 +310,7 @@ QVector<PresenceDetector::ProcessInfo> PresenceDetector::enumerateProcesses() {
             auto parts = data.split('\0');
             for (const auto &part : parts) {
                 if (!part.isEmpty())
-                    info.environ << QString::fromUtf8(part);
+                    info.envVars << QString::fromUtf8(part);
             }
         }
 
@@ -411,7 +411,7 @@ QVector<DetectedActivity> PresenceDetector::detect() {
     auto processes = enumerateProcesses();
     for (const auto &proc : processes) {
         // 1) Steam games via AppId
-        QString appId = steamAppIdFromEnv(proc.environ, proc.cmdline);
+        QString appId = steamAppIdFromEnv(proc.envVars, proc.cmdline);
         if (!appId.isEmpty()) {
             if (seenAppIds.contains(appId)) continue;
             if (m_steamCache.contains(appId)) {

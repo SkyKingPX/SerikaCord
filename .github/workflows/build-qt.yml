@@ -35,7 +35,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Qt 6.7 everywhere: Ubuntu's apt only has Qt 6.2, which is too old, and
+      # Qt 6.8 everywhere (6.7 links the AGL framework newer macOS SDKs dropped): Ubuntu's apt only has Qt 6.2, which is too old, and
       # the Linux packages bundle this Qt so they run on any distro.
       - name: Install Linux build dependencies
         if: matrix.name == 'linux'
@@ -46,13 +46,14 @@ jobs:
             libx11-dev libdbus-1-dev libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libfuse2 \
-            libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2
+            libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2 \
+            libcups2-dev libvulkan-dev
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.*'
-          # WebEngine needs Positioning and WebChannel at configure time.
+          version: '6.8.*'
+          # WebEngine (PrintSupport needs CUPS on Linux) needs Positioning and WebChannel at configure time.
           modules: 'qtwebengine qtwebchannel qtpositioning'
           cache: true
 

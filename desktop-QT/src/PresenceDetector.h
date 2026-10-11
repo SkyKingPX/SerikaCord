@@ -68,7 +68,7 @@ private:
         QString name;
         QString exePath;
         QStringList cmdline;
-        QStringList environ;
+        QStringList envVars;  // not "environ": that is a macro on Windows (MSVC)
     };
     QVector<ProcessInfo> enumerateProcesses();
 };
