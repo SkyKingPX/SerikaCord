@@ -96,11 +96,18 @@ jobs:
           export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}"
           export EXTRA_QT_MODULES="webenginecore;webenginewidgets;webchannel;positioning"
           export EXTRA_QT_PLUGINS="$EXTRA_QT_MODULES"
-          export OUTPUT="SerikaCord-${VERSION}-qt.AppImage"
           ./linuxdeploy-x86_64.AppImage --appdir AppDir \
             -e build/SerikaCord -d serikacord.desktop -i icon/serikacord.png \
-            --plugin qt --output appimage
-          ls -la "$OUTPUT"
+            --plugin qt
+          # Use the system's NSS and OpenSSL: Chromium aborts when a bundled
+          # (older) libnssutil3 meets the distro's libsoftokn3, and a bundled
+          # libcrypto next to the system libssl breaks Qt's TLS backend.
+          ( cd AppDir/usr/lib && rm -f libnss3.so libnssutil3.so libsmime3.so libnspr4.so libplc4.so libplds4.so \
+              libsoftokn3.so libfreebl3.so libfreeblpriv3.so libssl.so.3 libcrypto.so.3 )
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir "SerikaCord-${VERSION}-qt.AppImage"
+          ls -la "SerikaCord-${VERSION}-qt.AppImage"
 
       # The .deb ships the same bundled AppDir under /opt, so it doesn't depend
       # on the distro's (older) Qt.
@@ -122,7 +129,7 @@ jobs:
           Architecture: amd64
           Maintainer: SerikaCord <dev@serika.chat>
           Description: SerikaCord desktop app
-          Depends: libnss3, libxkbcommon-x11-0, libxcb-cursor0, libgl1, libasound2 | libasound2t64
+          Depends: libnss3, libssl3 | libssl3t64, libxkbcommon-x11-0, libxcb-cursor0, libgl1, libasound2 | libasound2t64
           EOF
           sed -i 's/^          //' "$PKG/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$PKG"
