@@ -28,7 +28,8 @@ jobs:
             name: linux
           - os: windows-latest
             name: windows
-          - os: macos-latest
+          # macos-15's SDK dropped the AGL framework Qt's OpenGL wrapper still links.
+          - os: macos-14
             name: macos
     runs-on: ${{ matrix.os }}
     steps:
@@ -54,7 +55,7 @@ jobs:
         with:
           version: '6.8.*'
           # WebEngine (PrintSupport needs CUPS on Linux) needs Positioning and WebChannel at configure time.
-          modules: 'qtwebengine qtwebchannel qtpositioning'
+          modules: 'qtwebengine qtwebchannel qtpositioning qtserialport'
           cache: true
 
       - name: Configure
@@ -152,6 +153,7 @@ jobs:
       # ── Windows packaging ────────────────────────────────────────────────────
       - name: Package Windows
         if: matrix.name == 'windows'
+        shell: bash
         working-directory: desktop-QT/build
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
