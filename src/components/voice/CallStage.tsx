@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useSpeakingUsers } from "@/hooks/useSpeakingUsers";
 import { voiceService, type VoiceParticipant } from "@/lib/services/voiceService";
-import { buildStageTiles, gridColumns, resolveFocusedTile, type StageTile } from "@/lib/voice/callLayout";
+import { buildStageTiles, fitGrid, gridColumns, resolveFocusedTile, type StageTile } from "@/lib/voice/callLayout";
 import {
   getServerUserVoicePrefs,
   getUserVoicePref,
@@ -122,6 +122,26 @@ interface TileInfo {
  * whole stage out into its own window where the browser supports it.
  * Right-click someone for their volume / mute and moderator actions.
  */
+
+/** Live content size of an element (ResizeObserver), for fitting the grid. */
+function useElementSize<T extends HTMLElement>() {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+    });
+    ro.observe(el);
+    observer.current = ro;
+  }, []);
+  return [ref, size] as const;
+}
+
 export function CallStage({
   variant,
   serverId,
@@ -140,6 +160,7 @@ export function CallStage({
   const gt = useGT();
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const [gridAreaRef, gridArea] = useElementSize<HTMLDivElement>();
   const snap = useCallSnapshot();
   const speaking = useSpeakingUsers();
   const prefs = useSyncExternalStore(subscribeUserVoicePrefs, getUserVoicePrefs, getServerUserVoicePrefs);
@@ -280,6 +301,10 @@ export function CallStage({
   );
 
   const cols = gridColumns(tiles.length, isMobile && !pipWindow);
+  // Like Discord: tiles are as large as possible while every one of them fits
+  // in the call area, instead of full-width tiles that overflow and get cropped.
+  const gridGap = isMobile ? 8 : 12;
+  const fit = fitGrid(tiles.length, gridArea.width, gridArea.height, gridGap);
   const canPopOut = !pipWindow && !!getDocumentPip() && !isMobile;
 
   const stage = (
@@ -323,13 +348,18 @@ export function CallStage({
           )}
         </div>
       ) : (
-        <div className={cn("flex min-h-0 flex-1", variant === "channel" ? "items-center" : "items-start")}>
+        <div ref={gridAreaRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
           <div
-            className="mx-auto grid w-full gap-2 sm:gap-3"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              maxWidth: tiles.length === 1 ? "56rem" : undefined,
-            }}
+            className={cn("mx-auto grid", !fit && "w-full")}
+            style={
+              fit
+                ? { gap: gridGap, gridTemplateColumns: `repeat(${fit.cols}, ${fit.tileWidth}px)` }
+                : {
+                    gap: gridGap,
+                    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                    maxWidth: tiles.length === 1 ? "56rem" : undefined,
+                  }
+            }
           >
             {tiles.map((t) => renderTile(t, "grid"))}
           </div>
@@ -462,7 +492,9 @@ function StageTileView({
           playsInline
           className={cn(
             "h-full w-full bg-black",
-            isScreen || mode === "spotlight" || fullscreen ? "object-contain" : "object-cover",
+            // Never crop: a 4:3 webcam or a phone held upright is letterboxed
+            // like on Discord instead of zoomed in to fill the tile.
+            "object-contain",
             tile.isSelf && !isScreen && "video-mirror",
           )}
         />

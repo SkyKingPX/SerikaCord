@@ -73,3 +73,27 @@ export function gridColumns(count: number, narrow: boolean): number {
   if (count <= 16) return 4;
   return 5;
 }
+
+/**
+ * Discord-style grid fit: the column count (and tile width in px) that gives
+ * the largest tiles of `aspect` where all `count` tiles fit inside
+ * `width` x `height` with `gap` between them. Null until the area is measured.
+ */
+export function fitGrid(
+  count: number,
+  width: number,
+  height: number,
+  gap: number,
+  aspect = 16 / 9,
+): { cols: number; tileWidth: number } | null {
+  if (count <= 0 || width <= 0 || height <= 0) return null;
+  let best: { cols: number; tileWidth: number } | null = null;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const byWidth = (width - gap * (cols - 1)) / cols;
+    const byHeight = ((height - gap * (rows - 1)) / rows) * aspect;
+    const tileWidth = Math.floor(Math.min(byWidth, byHeight));
+    if (tileWidth > 0 && (!best || tileWidth > best.tileWidth)) best = { cols, tileWidth };
+  }
+  return best;
+}

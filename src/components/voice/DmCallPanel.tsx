@@ -204,7 +204,7 @@ export function DmCallPanel({
         </p>
       )}
 
-      <CallStage variant="dm" className="mt-3 max-h-[60vh]" />
+      <CallStage variant="dm" className="mt-3 h-[clamp(14rem,50vh,36rem)]" />
 
       <div className="mt-4 flex items-center justify-center gap-3">
         <button

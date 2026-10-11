@@ -33,7 +33,7 @@ import {
   streamContentHint,
   streamMaxBitrate,
 } from "@/lib/voice/streamQuality";
-import { buildStageTiles, gridColumns, resolveFocusedTile } from "@/lib/voice/callLayout";
+import { buildStageTiles, fitGrid, gridColumns, resolveFocusedTile } from "@/lib/voice/callLayout";
 import { DEFAULT_DEVICE_ID, deviceChoices, deviceConstraint } from "@/lib/voice/devices";
 import { readVoiceCallSettings, shouldTransmit } from "@/lib/voice/settings";
 
@@ -251,5 +251,27 @@ describe("device pickers", () => {
     expect(deviceConstraint(DEFAULT_DEVICE_ID)).toEqual({});
     expect(deviceConstraint(null)).toEqual({});
     expect(deviceConstraint("mic1")).toEqual({ deviceId: { ideal: "mic1" } });
+  });
+});
+
+describe("fitGrid", () => {
+  test("one tile is limited by a short area, not stretched to full width", () => {
+    // 1600x400 area: a full-width 16:9 tile would be 900px tall; fit by height.
+    expect(fitGrid(1, 1600, 400, 8)).toEqual({ cols: 1, tileWidth: Math.floor(400 * 16 / 9) });
+  });
+  test("two tiles sit side by side in a wide area", () => {
+    expect(fitGrid(2, 1600, 450, 8)?.cols).toBe(2);
+  });
+  test("two tiles stack in a tall, narrow area", () => {
+    expect(fitGrid(2, 400, 900, 8)?.cols).toBe(1);
+  });
+  test("every tile fits", () => {
+    const r = fitGrid(7, 1200, 700, 8)!;
+    const rows = Math.ceil(7 / r.cols);
+    expect(r.cols * r.tileWidth + 8 * (r.cols - 1) <= 1200).toBe(true);
+    expect(rows * (r.tileWidth * 9 / 16) + 8 * (rows - 1) <= 700).toBe(true);
+  });
+  test("unmeasured area returns null", () => {
+    expect(fitGrid(3, 0, 0, 8)).toBeNull();
   });
 });
