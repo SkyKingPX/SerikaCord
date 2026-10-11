@@ -329,9 +329,12 @@ export default function DownloadClient({ release }: { release: ReleaseInfo }) {
                           {gt("Download {format}", { format: main.label })}
                         </a>
                         <p className="mt-2 text-center text-xs text-[#5f5f6b]">{formatSize(main.size)}</p>
-                        {alts.length > 0 && (
-                          <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-white/[0.06] pt-3">
-                            {alts.map((f) => (
+                        {/* Always reserve this row so the buttons line up across cards. */}
+                        <div className="mt-3 flex min-h-[2.25rem] flex-wrap justify-center gap-x-3 gap-y-1 border-t border-white/[0.06] pt-3">
+                          {alts.length === 0 ? (
+                            <span className="text-xs text-[#4f4f5a]">{main.label}</span>
+                          ) : (
+                            alts.map((f) => (
                               <a
                                 key={f.name}
                                 href={f.url}
@@ -340,9 +343,9 @@ export default function DownloadClient({ release }: { release: ReleaseInfo }) {
                               >
                                 {f.label}
                               </a>
-                            ))}
-                          </div>
-                        )}
+                            ))
+                          )}
+                        </div>
                       </>
                     ) : (
                       <a
