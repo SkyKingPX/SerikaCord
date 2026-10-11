@@ -188,15 +188,25 @@ jobs:
         working-directory: mobile
         run: bunx cap sync android
 
-      - name: Generate release keystore
+      # The release key must stay the same across releases, or Android refuses
+      # to install updates. It lives in the ANDROID_KEYSTORE_BASE64 secret
+      # (PKCS12, alias "serikacord"); forks without it get a throwaway key.
+      - name: Release keystore
         working-directory: mobile/android/app
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          keytool -genkeypair -v -keystore release.keystore \
-            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'serikacord' }}" \
-            -alias serikacord \
-            -keypass "${{ secrets.ANDROID_KEY_PASSWORD || 'serikacord' }}" \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=SerikaCord,O=Serika,C=US"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 not set: signing with a throwaway key (users can't update over it)"
+            keytool -genkeypair -v -keystore release.keystore \
+              -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'serikacord' }}" \
+              -alias serikacord \
+              -keypass "${{ secrets.ANDROID_KEY_PASSWORD || 'serikacord' }}" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=SerikaCord,O=Serika,C=US"
+          fi
 
       - name: Make gradlew executable
         working-directory: mobile/android
