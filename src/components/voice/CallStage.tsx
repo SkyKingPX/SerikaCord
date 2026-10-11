@@ -169,7 +169,7 @@ export function CallStage({
       .map((p) => ({
         userId: p.userId,
         camera: !!p.video && !!p.stream && p.stream.getVideoTracks().length > 0,
-        screen: !!p.screenStream,
+        screen: !!p.screenStream && p.screenStream.getVideoTracks().length > 0,
       }));
     if (myId) {
       members.unshift({

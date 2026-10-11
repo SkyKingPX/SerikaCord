@@ -1335,9 +1335,14 @@ class VoiceService {
       // stream is a screen share (getDisplayMedia produces a distinct stream),
       // so it must NOT overwrite the primary stream — otherwise remote audio
       // breaks and the camera tile disappears.
-      if (!this.remoteStreams.has(targetUserId)) {
+      // simple-peer fires 'track' before 'stream', so the primary may already be
+      // this same stream (by id). Only a different stream that carries video is
+      // a screen share: an audio-only extra stream must never open the screen
+      // share UI.
+      const primary = this.remoteStreams.get(targetUserId);
+      if (!primary) {
         this.remoteStreams.set(targetUserId, stream);
-      } else if (this.remoteStreams.get(targetUserId) !== stream) {
+      } else if (primary !== stream && primary.id !== stream.id && stream.getVideoTracks().length > 0) {
         this.remoteScreenStreams.set(targetUserId, stream);
         // When the screen stream's track ends (sharer stopped), drop it.
         stream.getVideoTracks().forEach((t) => {
@@ -1360,6 +1365,13 @@ class VoiceService {
       if (track.kind === "video") {
         // If this track is part of the primary stream, it's the camera — not a screen share.
         const primary = this.remoteStreams.get(targetUserId);
+        // Their camera arriving before the 'stream' event: the mic+camera
+        // stream is the primary, not a screen share.
+        if (!primary && stream && stream.getAudioTracks().length > 0) {
+          this.remoteStreams.set(targetUserId, stream);
+          this.emitParticipants();
+          return;
+        }
         if (primary && stream.id === primary.id) return;
         // Also skip if the track is already in the primary stream
         if (primary && primary.getTracks().includes(track)) return;
@@ -1386,7 +1398,9 @@ class VoiceService {
         if (primary) {
           primary.addTrack(track);
         } else {
-          this.remoteStreams.set(targetUserId, new MediaStream([track]));
+          // Adopt the peer's real stream (not a copy) so the 'stream' event that
+          // follows recognises it as the primary instead of a "screen share".
+          this.remoteStreams.set(targetUserId, stream ?? new MediaStream([track]));
         }
         this.emitParticipants();
       }
