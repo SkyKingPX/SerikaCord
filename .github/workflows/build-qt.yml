@@ -35,29 +35,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Qt 6.7 everywhere: Ubuntu's apt only has Qt 6.2, which is too old, and
+      # the Linux packages bundle this Qt so they run on any distro.
       - name: Install Linux build dependencies
         if: matrix.name == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            qt6-base-dev \
-            qt6-webengine-dev \
-            qt6-webchannel-dev \
-            qt6-webengine-dev-tools \
-            qt6-base-dev-tools \
-            libx11-dev \
-            cmake \
-            build-essential \
-            patchelf \
-            file \
-            librsvg2-dev
+            cmake build-essential patchelf file librsvg2-dev libssl-dev \
+            libx11-dev libdbus-1-dev libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libfuse2 \
+            libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libasound2
 
-      - name: Install Qt (Windows & macOS)
-        if: matrix.name != 'linux'
+      - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.*'
-          modules: 'qtwebengine qtwebchannel'
+          # WebEngine needs Positioning and WebChannel at configure time.
+          modules: 'qtwebengine qtwebchannel qtpositioning'
+          cache: true
 
       - name: Configure
         working-directory: desktop-QT
@@ -88,37 +85,45 @@ jobs:
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
-          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-          cp build/SerikaCord AppDir/usr/bin/
-          cp serikacord.desktop AppDir/usr/share/applications/
-          cp src/resources/icons/app-icon.png AppDir/usr/share/icons/hicolor/256x256/apps/serikacord.png
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+          mkdir -p icon && cp src/resources/icons/app-icon.png icon/serikacord.png
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}"
+          export EXTRA_QT_MODULES="webenginecore;webenginewidgets;webchannel;positioning"
+          export EXTRA_QT_PLUGINS="$EXTRA_QT_MODULES"
+          export OUTPUT="SerikaCord-${VERSION}-qt.AppImage"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            -e build/SerikaCord -d serikacord.desktop -i icon/serikacord.png \
+            --plugin qt --output appimage
+          ls -la "$OUTPUT"
 
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir "SerikaCord-${VERSION}-qt.AppImage" || true
-
+      # The .deb ships the same bundled AppDir under /opt, so it doesn't depend
+      # on the distro's (older) Qt.
       - name: Create Linux .deb
         if: matrix.name == 'linux'
         working-directory: desktop-QT
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
-          mkdir -p deb-pkg/serikacord-qt_${VERSION}_amd64/DEBIAN
-          mkdir -p deb-pkg/serikacord-qt_${VERSION}_amd64/usr/bin
-          mkdir -p deb-pkg/serikacord-qt_${VERSION}_amd64/usr/share/applications
-          mkdir -p deb-pkg/serikacord-qt_${VERSION}_amd64/usr/share/icons/hicolor/256x256/apps
-          cp build/SerikaCord deb-pkg/serikacord-qt_${VERSION}_amd64/usr/bin/
-          cp serikacord.desktop deb-pkg/serikacord-qt_${VERSION}_amd64/usr/share/applications/
-          cp src/resources/icons/app-icon.png deb-pkg/serikacord-qt_${VERSION}_amd64/usr/share/icons/hicolor/256x256/apps/serikacord.png
-          cat > deb-pkg/serikacord-qt_${VERSION}_amd64/DEBIAN/control << EOF
+          PKG="deb-pkg/serikacord-qt_${VERSION}_amd64"
+          mkdir -p "$PKG/DEBIAN" "$PKG/opt" "$PKG/usr/bin" "$PKG/usr/share/applications" "$PKG/usr/share/icons/hicolor/256x256/apps"
+          cp -a AppDir "$PKG/opt/serikacord"
+          ln -s /opt/serikacord/usr/bin/SerikaCord "$PKG/usr/bin/SerikaCord"
+          cp serikacord.desktop "$PKG/usr/share/applications/"
+          cp src/resources/icons/app-icon.png "$PKG/usr/share/icons/hicolor/256x256/apps/serikacord.png"
+          cat > "$PKG/DEBIAN/control" << EOF
           Package: serikacord-qt
           Version: ${VERSION}
           Architecture: amd64
           Maintainer: SerikaCord <dev@serika.chat>
-          Description: SerikaCord Qt desktop client
-          Depends: libqt6webengine6, libqt6webchannel6, libqt6widgets6, libqt6dbus6, libx11-6
+          Description: SerikaCord desktop app
+          Depends: libnss3, libxkbcommon-x11-0, libxcb-cursor0, libgl1, libasound2 | libasound2t64
           EOF
-          dpkg-deb --build deb-pkg/serikacord-qt_${VERSION}_amd64
+          sed -i 's/^          //' "$PKG/DEBIAN/control"
+          dpkg-deb --root-owner-group --build "$PKG"
 
       - name: Sign AppImage (GPG)
         if: matrix.name == 'linux'
