@@ -171,11 +171,10 @@ jobs:
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
-          mkdir -p SerikaCord.app/Contents/MacOS
+          # CMake already builds the SerikaCord.app bundle (MACOSX_BUNDLE).
+          test -x SerikaCord.app/Contents/MacOS/SerikaCord
           mkdir -p SerikaCord.app/Contents/Resources
-          cp SerikaCord SerikaCord.app/Contents/MacOS/
           cp ../src/resources/icons/app-icon.png SerikaCord.app/Contents/Resources/
-          cp ../Info.plist SerikaCord.app/Contents/
           macdeployqt SerikaCord.app
           hdiutil create -volname "SerikaCord" -srcfolder SerikaCord.app -ov -format UDZO "SerikaCord-${VERSION}-qt.dmg"
 
